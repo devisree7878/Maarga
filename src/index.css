@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --accent: 99 102 241;
+  --accent-2: 129 140 248;
+  --accent-fg: 255 255 255;
+
+  --bg: 9 10 14;
+  --surface: 17 19 25;
+  --surface-2: 22 25 33;
+  --surface-3: 28 31 41;
+  --border: 32 36 47;
+  --border-soft: 24 27 35;
+  --text: 230 232 240;
+  --text-muted: 143 149 168;
+  --text-dim: 96 102 122;
+}
+
+html.light {
+  --bg: 246 246 250;
+  --surface: 255 255 255;
+  --surface-2: 250 250 253;
+  --surface-3: 243 244 248;
+  --border: 226 227 235;
+  --border-soft: 234 235 241;
+  --text: 22 23 31;
+  --text-muted: 100 105 125;
+  --text-dim: 140 145 165;
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+html, body { overscroll-behavior-y: none; height: 100%; }
+body {
+  background: rgb(var(--bg));
+  color: rgb(var(--text));
+  font-feature-settings: "cv11", "ss01";
+  transition: background-color .2s ease, color .2s ease;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(var(--border)); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--text-dim)); }
+
+.accent-text { color: rgb(var(--accent)); }
+.accent-bg { background-color: rgb(var(--accent)); }
+.accent-border { border-color: rgb(var(--accent)); }
+.accent-gradient { background: linear-gradient(135deg, rgb(var(--accent)) 0%, rgb(var(--accent-2)) 100%); }
+.font-tabular { font-variant-numeric: tabular-nums; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+@keyframes pulseRing {
+  0% { box-shadow: 0 0 0 0 rgb(var(--accent) / 0.45); }
+  100% { box-shadow: 0 0 0 8px rgb(var(--accent) / 0); }
+}
+.pulse-ring { animation: pulseRing 1.6s cubic-bezier(.4,0,.6,1) infinite; }
+
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes slideInRight { from { transform: translateX(100%) } to { transform: translateX(0) } }
+@keyframes slideInUp { from { transform: translateY(100%) } to { transform: translateY(0) } }
+.anim-fadeIn { animation: fadeIn .18s ease-out; }
+.anim-slideUp { animation: slideUp .22s ease-out; }
+.anim-slideInRight { animation: slideInRight .3s cubic-bezier(.16,1,.3,1); }
+.anim-slideInUp { animation: slideInUp .3s cubic-bezier(.16,1,.3,1); }
