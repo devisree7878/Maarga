@@ -422,6 +422,9 @@ function GoalSection() {
 /* =========================================================
    SCHEDULE
 ========================================================= */
+/* =========================================================
+   SCHEDULE
+========================================================= */
 
 function ScheduleSection() {
   const {
@@ -430,54 +433,484 @@ function ScheduleSection() {
   } = useAuth();
 
   const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
 
-  const changeDuration = async (e) => {
-    const days = Number(e.target.value);
+  // -----------------------------------------
+  // Convert database HH:MM → 12-hour format
+  // -----------------------------------------
+  const parseTime = (time) => {
+    if (!time) {
+      return {
+        hour: '07',
+        minute: '30',
+        period: 'AM',
+      };
+    }
+
+    const [hours, minutes] = time.split(':');
+    let hour = Number(hours);
+    const period = hour >= 12 ? 'PM' : 'AM';
+
+    if (hour === 0) {
+      hour = 12;
+    } else if (hour > 12) {
+      hour -= 12;
+    }
+
+    return {
+      hour: String(hour).padStart(2, '0'),
+      minute: minutes || '00',
+      period,
+    };
+  };
+
+  const start = parseTime(profile?.daily_start_time);
+  const end = parseTime(profile?.daily_end_time);
+
+  const [duration, setDuration] = useState(
+    profile?.schedule_days || 90
+  );
+
+  const [startHour, setStartHour] = useState(start.hour);
+  const [startMinute, setStartMinute] = useState(start.minute);
+  const [startPeriod, setStartPeriod] = useState(start.period);
+
+  const [endHour, setEndHour] = useState(end.hour);
+  const [endMinute, setEndMinute] = useState(end.minute);
+  const [endPeriod, setEndPeriod] = useState(end.period);
+
+  const [remindersEnabled, setRemindersEnabled] = useState(
+    profile?.reminders_enabled !== false
+  );
+
+  const hours = Array.from(
+    { length: 12 },
+    (_, i) => String(i + 1).padStart(2, '0')
+  );
+
+  const minutes = [
+    '00',
+    '05',
+    '10',
+    '15',
+    '20',
+    '25',
+    '30',
+    '35',
+    '40',
+    '45',
+    '50',
+    '55',
+  ];
+
+  // -----------------------------------------
+  // Convert 12-hour time → minutes
+  // -----------------------------------------
+  const toMinutes = (hour, minute, period) => {
+    let h = Number(hour);
+
+    if (period === 'AM') {
+      if (h === 12) h = 0;
+    } else {
+      if (h !== 12) h += 12;
+    }
+
+    return h * 60 + Number(minute);
+  };
+
+  // -----------------------------------------
+  // Convert 12-hour time → database HH:MM
+  // -----------------------------------------
+  const toDatabaseTime = (hour, minute, period) => {
+    let h = Number(hour);
+
+    if (period === 'AM') {
+      if (h === 12) h = 0;
+    } else {
+      if (h !== 12) h += 12;
+    }
+
+    return `${String(h).padStart(2, '0')}:${minute}`;
+  };
+
+  // -----------------------------------------
+  // SAVE EVERYTHING
+  // -----------------------------------------
+  const saveSchedule = async () => {
+    setMessage('');
+
+    const days = Number(duration);
+
+    if (!days || days < 1 || days > 365) {
+      setMessage('error:Plan duration must be between 1 and 365 days.');
+      return;
+    }
+
+    const startTotal = toMinutes(
+      startHour,
+      startMinute,
+      startPeriod
+    );
+
+    const endTotal = toMinutes(
+      endHour,
+      endMinute,
+      endPeriod
+    );
+
+    if (startTotal >= endTotal) {
+      setMessage(
+        'error:End time must be later than start time.'
+      );
+      return;
+    }
 
     setSaving(true);
 
-    await supabase
+    const dailyStartTime = toDatabaseTime(
+      startHour,
+      startMinute,
+      startPeriod
+    );
+
+    const dailyEndTime = toDatabaseTime(
+      endHour,
+      endMinute,
+      endPeriod
+    );
+
+    const { error } = await supabase
       .from('profiles')
       .update({
         schedule_days: days,
+        daily_start_time: dailyStartTime,
+        daily_end_time: dailyEndTime,
+        reminders_enabled: remindersEnabled,
       })
       .eq('id', profile.id);
 
+    if (error) {
+      setMessage(`error:${error.message}`);
+      setSaving(false);
+      return;
+    }
+
     await refreshProfile();
 
+    setMessage('success:Schedule updated successfully.');
     setSaving(false);
   };
 
   return (
     <SectionCard
-      title="Schedule"
-      description="How many days your plan runs for. Existing progress is kept."
+      title="Schedule & Daily Study Time"
+      description="Change your plan duration and daily study timing anytime."
     >
-      <div className="flex items-center gap-3">
 
-        <Select
-          value={profile?.schedule_days}
-          onChange={changeDuration}
-          className="max-w-[160px]"
-        >
-          {DURATIONS.map((d) => (
-            <option
-              key={d}
-              value={d}
+      <div className="space-y-6">
+
+        {/* =========================================
+            PLAN DURATION
+        ========================================= */}
+
+        <div>
+
+          <p className="text-sm font-semibold text-[rgb(var(--text))]">
+            Plan duration
+          </p>
+
+          <p className="text-xs text-[rgb(var(--text-muted))] mt-1 mb-3">
+            Choose any number of days from 1 to 365.
+          </p>
+
+          <div className="flex gap-2">
+
+            <Input
+              type="number"
+              min="1"
+              max="365"
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              className="max-w-[180px]"
+            />
+
+            <div className="flex items-center px-4 rounded-xl bg-[rgb(var(--surface-2))] border border-[rgb(var(--border-soft))] text-sm text-[rgb(var(--text-muted))]">
+              days
+            </div>
+
+          </div>
+
+          {/* QUICK OPTIONS */}
+
+          <div className="flex flex-wrap gap-2 mt-3">
+
+            {[10, 20, 30, 60, 90, 120, 180, 365].map(
+              (days) => (
+                <button
+                  key={days}
+                  type="button"
+                  onClick={() => setDuration(days)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                    Number(duration) === days
+                      ? 'accent-border bg-[rgb(var(--surface-2))] text-[rgb(var(--text))]'
+                      : 'border-[rgb(var(--border))] text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]'
+                  }`}
+                >
+                  {days}
+                </button>
+              )
+            )}
+
+          </div>
+
+        </div>
+
+        {/* =========================================
+            DAILY STUDY TIME
+        ========================================= */}
+
+        <div>
+
+          <p className="text-sm font-semibold text-[rgb(var(--text))]">
+            Daily study time
+          </p>
+
+          <p className="text-xs text-[rgb(var(--text-muted))] mt-1 mb-4">
+            Change when your daily study session starts and ends.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+            {/* START TIME */}
+
+            <div>
+
+              <label className="block text-xs font-semibold text-[rgb(var(--text-muted))] mb-2">
+                Start time
+              </label>
+
+              <div className="flex gap-2">
+
+                <select
+                  value={startHour}
+                  onChange={(e) =>
+                    setStartHour(e.target.value)
+                  }
+                  className="flex-1 min-w-0 px-3 py-3 rounded-xl bg-[rgb(var(--surface-2))] border border-[rgb(var(--border-soft))] text-[rgb(var(--text))] outline-none"
+                >
+                  {hours.map((hour) => (
+                    <option key={hour} value={hour}>
+                      {hour}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={startMinute}
+                  onChange={(e) =>
+                    setStartMinute(e.target.value)
+                  }
+                  className="flex-1 min-w-0 px-3 py-3 rounded-xl bg-[rgb(var(--surface-2))] border border-[rgb(var(--border-soft))] text-[rgb(var(--text))] outline-none"
+                >
+                  {minutes.map((minute) => (
+                    <option key={minute} value={minute}>
+                      {minute}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={startPeriod}
+                  onChange={(e) =>
+                    setStartPeriod(e.target.value)
+                  }
+                  className="w-20 px-2 py-3 rounded-xl bg-[rgb(var(--surface-2))] border border-[rgb(var(--border-soft))] text-[rgb(var(--text))] outline-none"
+                >
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </select>
+
+              </div>
+
+            </div>
+
+            {/* END TIME */}
+
+            <div>
+
+              <label className="block text-xs font-semibold text-[rgb(var(--text-muted))] mb-2">
+                End time
+              </label>
+
+              <div className="flex gap-2">
+
+                <select
+                  value={endHour}
+                  onChange={(e) =>
+                    setEndHour(e.target.value)
+                  }
+                  className="flex-1 min-w-0 px-3 py-3 rounded-xl bg-[rgb(var(--surface-2))] border border-[rgb(var(--border-soft))] text-[rgb(var(--text))] outline-none"
+                >
+                  {hours.map((hour) => (
+                    <option key={hour} value={hour}>
+                      {hour}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={endMinute}
+                  onChange={(e) =>
+                    setEndMinute(e.target.value)
+                  }
+                  className="flex-1 min-w-0 px-3 py-3 rounded-xl bg-[rgb(var(--surface-2))] border border-[rgb(var(--border-soft))] text-[rgb(var(--text))] outline-none"
+                >
+                  {minutes.map((minute) => (
+                    <option key={minute} value={minute}>
+                      {minute}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={endPeriod}
+                  onChange={(e) =>
+                    setEndPeriod(e.target.value)
+                  }
+                  className="w-20 px-2 py-3 rounded-xl bg-[rgb(var(--surface-2))] border border-[rgb(var(--border-soft))] text-[rgb(var(--text))] outline-none"
+                >
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </select>
+
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* =========================================
+              CURRENT SCHEDULE PREVIEW
+          ========================================= */}
+
+          <div className="flex items-center gap-3 p-4 mt-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+
+            <span className="text-xl">
+              🔔
+            </span>
+
+            <div>
+
+              <p className="text-sm font-semibold text-[rgb(var(--text))]">
+                Daily study reminder
+              </p>
+
+              <p className="text-xs text-[rgb(var(--text-muted))] mt-1">
+                Your study session runs from{' '}
+
+                <span className="font-semibold text-[rgb(var(--text))]">
+                  {startHour}:{startMinute} {startPeriod}
+                </span>
+
+                {' '}to{' '}
+
+                <span className="font-semibold text-[rgb(var(--text))]">
+                  {endHour}:{endMinute} {endPeriod}
+                </span>
+
+              </p>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* =========================================
+            REMINDERS
+        ========================================= */}
+
+        <div className="flex items-center justify-between gap-4">
+
+          <div>
+
+            <p className="text-sm font-semibold text-[rgb(var(--text))]">
+              Daily reminders
+            </p>
+
+            <p className="text-xs text-[rgb(var(--text-dim))] mt-1">
+              Remind me when my study session starts.
+            </p>
+
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              setRemindersEnabled(
+                !remindersEnabled
+              )
+            }
+            className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${
+              remindersEnabled
+                ? 'accent-bg'
+                : 'bg-[rgb(var(--surface-3))]'
+            }`}
+          >
+
+            <span
+              className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+                remindersEnabled
+                  ? 'translate-x-5'
+                  : 'translate-x-0.5'
+              }`}
+            />
+
+          </button>
+
+        </div>
+
+        {/* =========================================
+            SAVE BUTTON
+        ========================================= */}
+
+        <div className="flex items-center gap-3">
+
+          <Button
+            type="button"
+            onClick={saveSchedule}
+            disabled={saving}
+          >
+
+            {saving && (
+              <Loader2
+                size={14}
+                className="animate-spin"
+              />
+            )}
+
+            {saving
+              ? 'Saving...'
+              : 'Save Schedule'}
+
+          </Button>
+
+          {message && (
+            <p
+              className={`text-xs ${
+                message.startsWith('error')
+                  ? 'text-red-400'
+                  : 'text-emerald-400'
+              }`}
             >
-              {d} days
-            </option>
-          ))}
-        </Select>
+              {message.split(':').slice(1).join(':')}
+            </p>
+          )}
 
-        {saving && (
-          <Loader2
-            size={14}
-            className="animate-spin text-[rgb(var(--text-dim))]"
-          />
-        )}
+        </div>
 
       </div>
+
     </SectionCard>
   );
 }

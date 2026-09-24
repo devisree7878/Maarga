@@ -51,7 +51,6 @@ export function defaultCategories() {
     { id: genId('cat'), name: 'Revision', color: '#8B5CF6', icon: 'RotateCcw', order: 5, active: true },
   ];
 }
-
 export function defaultSettings(duration = DURATION) {
   return {
     theme: 'dark',
@@ -59,7 +58,11 @@ export function defaultSettings(duration = DURATION) {
     startDate: todayISO(),
     duration,
     timeFormat: 24,
+
+    // Reminder settings
     notifications: false,
+    reminderSound: true,
+    reminderMinutesBefore: 0,
   };
 }
 
@@ -130,9 +133,13 @@ export function blankTask(dayNumber, categoryId) {
     notes: '',
     order: 0,
     createdAt: new Date().toISOString(),
+
+    // Reminder
+    reminderTime: '',
+    reminderEnabled: false,
+    reminderTriggeredAt: null,
   };
 }
-
 export function blankProblem(dayNumber) {
   return {
     id: genId('prob'),

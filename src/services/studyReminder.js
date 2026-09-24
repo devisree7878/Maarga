@@ -1,8 +1,18 @@
+
 let reminderInterval = null;
 let audioContext = null;
 
+/* =========================================================
+   NOTIFICATION PERMISSION
+========================================================= */
+
 export async function requestNotificationPermission() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
   if (!('Notification' in window)) {
+    console.warn('Browser notifications are not supported.');
     return false;
   }
 
@@ -14,139 +24,370 @@ export async function requestNotificationPermission() {
     return false;
   }
 
-  const permission = await Notification.requestPermission();
-  return permission === 'granted';
+  try {
+    const permission = await Notification.requestPermission();
+
+    return permission === 'granted';
+  } catch (error) {
+    console.warn(
+      'Could not request notification permission:',
+      error
+    );
+
+    return false;
+  }
 }
 
-function playAlarmSound() {
+
+/* =========================================================
+   REMINDER SOUND
+========================================================= */
+
+export async function playReminderSound() {
   try {
-    // Create the audio context after a user interaction
-    // whenever possible.
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const AudioContext =
+      window.AudioContext ||
+      window.webkitAudioContext;
+
+    if (!AudioContext) {
+      console.warn(
+        'Web Audio API is not supported by this browser.'
+      );
+
+      return;
+    }
+
     if (!audioContext) {
-      audioContext = new (
-        window.AudioContext || window.webkitAudioContext
-      )();
+      audioContext = new AudioContext();
     }
 
     if (audioContext.state === 'suspended') {
-      audioContext.resume();
+      await audioContext.resume();
     }
+
+    const now = audioContext.currentTime;
 
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
 
     oscillator.type = 'sine';
-    oscillator.frequency.value = 880;
 
-    gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+    // Pleasant notification tone
+    oscillator.frequency.setValueAtTime(
+      880,
+      now
+    );
+
+    oscillator.frequency.setValueAtTime(
+      988,
+      now + 0.18
+    );
+
+    oscillator.frequency.setValueAtTime(
+      880,
+      now + 0.36
+    );
+
+    // Start almost silent
+    gainNode.gain.setValueAtTime(
+      0.0001,
+      now
+    );
+
+    // Fade in
+    gainNode.gain.exponentialRampToValueAtTime(
+      0.25,
+      now + 0.04
+    );
+
+    // Fade out
+    gainNode.gain.exponentialRampToValueAtTime(
+      0.0001,
+      now + 0.75
+    );
 
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
 
-    oscillator.start();
+    oscillator.start(now);
+    oscillator.stop(now + 0.75);
 
-    gainNode.gain.exponentialRampToValueAtTime(
-      0.25,
-      audioContext.currentTime + 0.05
-    );
+    oscillator.onended = () => {
+      try {
+        oscillator.disconnect();
+        gainNode.disconnect();
+      } catch {
+        // Nothing to clean up
+      }
+    };
 
-    gainNode.gain.exponentialRampToValueAtTime(
-      0.0001,
-      audioContext.currentTime + 0.8
-    );
-
-    oscillator.stop(audioContext.currentTime + 0.8);
   } catch (error) {
-    console.warn('Could not play reminder sound:', error);
+    console.warn(
+      'Could not play reminder sound:',
+      error
+    );
   }
 }
+
+
+/* =========================================================
+   TEST SOUND
+========================================================= */
+
+export async function testReminderSound() {
+  await playReminderSound();
+}
+
+
+/* =========================================================
+   DAILY REMINDER STORAGE
+========================================================= */
 
 function getTodayKey() {
   const today = new Date();
 
-  return `elevora-study-reminder-${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+  const year = today.getFullYear();
+  const month = String(
+    today.getMonth() + 1
+  ).padStart(2, '0');
+
+  const day = String(
+    today.getDate()
+  ).padStart(2, '0');
+
+  return `study-reminder-${year}-${month}-${day}`;
 }
+
 
 function hasReminderPlayedToday() {
-  return localStorage.getItem(getTodayKey()) === 'true';
+  try {
+    return (
+      localStorage.getItem(
+        getTodayKey()
+      ) === 'true'
+    );
+  } catch {
+    return false;
+  }
 }
+
 
 function markReminderPlayed() {
-  localStorage.setItem(getTodayKey(), 'true');
+  try {
+    localStorage.setItem(
+      getTodayKey(),
+      'true'
+    );
+  } catch {
+    // Ignore storage errors.
+  }
 }
 
+
+/* =========================================================
+   TIME HELPERS
+========================================================= */
+
+function normalizeTime(time) {
+  if (!time) {
+    return null;
+  }
+
+  const value = String(time).trim();
+
+  // Handles:
+  // 07:30
+  // 07:30:00
+  // 19:30
+  const match = value.match(
+    /^(\d{1,2}):(\d{2})/
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  if (
+    Number.isNaN(hours) ||
+    Number.isNaN(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return null;
+  }
+
+  return {
+    hours,
+    minutes,
+  };
+}
+
+
 function isStartTime(startTime) {
-  if (!startTime) return false;
+  const parsed = normalizeTime(startTime);
+
+  if (!parsed) {
+    return false;
+  }
 
   const now = new Date();
 
-  const [hours, minutes] = startTime
-    .slice(0, 5)
-    .split(':')
-    .map(Number);
-
   return (
-    now.getHours() === hours &&
-    now.getMinutes() === minutes
+    now.getHours() === parsed.hours &&
+    now.getMinutes() === parsed.minutes
   );
 }
 
+
+/* =========================================================
+   STUDY NOTIFICATION
+========================================================= */
+
 function showStudyNotification(goal) {
-  if (!('Notification' in window)) return;
+  if (
+    typeof window === 'undefined' ||
+    !('Notification' in window)
+  ) {
+    return;
+  }
 
-  if (Notification.permission !== 'granted') return;
+  if (
+    Notification.permission !== 'granted'
+  ) {
+    return;
+  }
 
-  new Notification('ELEVORA — Study Time', {
-    body: goal
-      ? `Time to work toward: ${goal}`
-      : 'Your daily learning session is starting.',
-    icon: '/favicon.ico',
-    tag: 'elevora-study-reminder',
-  });
+  try {
+    new Notification('Study Reminder', {
+      body: goal
+        ? `Time to work toward: ${goal}`
+        : 'Your daily learning session is starting.',
+
+      icon: '/favicon.ico',
+
+      tag: 'study-reminder',
+
+      renotify: false,
+
+      silent: true,
+    });
+  } catch (error) {
+    console.warn(
+      'Could not show study notification:',
+      error
+    );
+  }
 }
+
+
+/* =========================================================
+   STOP EXISTING REMINDER
+========================================================= */
+
+export function stopStudyReminder() {
+  if (reminderInterval !== null) {
+    window.clearInterval(
+      reminderInterval
+    );
+
+    reminderInterval = null;
+  }
+}
+
+
+/* =========================================================
+   START DAILY STUDY REMINDER
+========================================================= */
 
 export async function startStudyReminder({
   startTime,
   goal,
   enabled = true,
 }) {
+  // Always stop an existing timer first.
   stopStudyReminder();
 
-  if (!enabled || !startTime) {
+  // Reminder disabled.
+  if (!enabled) {
     return;
   }
 
+  // No valid time.
+  if (!normalizeTime(startTime)) {
+    console.warn(
+      'Study reminder disabled: invalid start time.',
+      startTime
+    );
+
+    return;
+  }
+
+  /*
+   * Ask for notification permission.
+   *
+   * Even if the user denies it, the sound can still
+   * work while the page is open.
+   */
   await requestNotificationPermission();
 
-  const checkReminder = () => {
+
+  /* -------------------------------------------------------
+     Check the reminder
+  ------------------------------------------------------- */
+
+  const checkReminder = async () => {
+    // Already triggered today.
     if (hasReminderPlayedToday()) {
       return;
     }
 
+    // Not the scheduled minute.
     if (!isStartTime(startTime)) {
       return;
     }
 
+    /*
+     * Mark FIRST.
+     *
+     * This prevents duplicate notifications if multiple
+     * checks happen during the same minute.
+     */
     markReminderPlayed();
 
+    // Browser notification
     showStudyNotification(goal);
 
-    playAlarmSound();
+    // Beep sound
+    await playReminderSound();
   };
 
-  // Check immediately
-  checkReminder();
 
-  // Then check every 30 seconds
+  /*
+   * Check immediately.
+   *
+   * This is useful when the user opens/refreshed the app
+   * exactly at the scheduled time.
+   */
+  await checkReminder();
+
+
+  /*
+   * Check every 10 seconds.
+   *
+   * This gives better accuracy than the old 30-second
+   * interval.
+   */
   reminderInterval = window.setInterval(
     checkReminder,
-    30 * 1000
+    10 * 1000
   );
-}
-
-export function stopStudyReminder() {
-  if (reminderInterval) {
-    window.clearInterval(reminderInterval);
-    reminderInterval = null;
-  }
 }

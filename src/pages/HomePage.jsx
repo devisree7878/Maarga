@@ -45,11 +45,12 @@ export default function HomePage() {
           BACKGROUND
       ====================================================== */}
 
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
 
         {/* Main atmospheric glow */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_32%,rgba(99,72,180,0.25),transparent_55%)]" />
 
+        {/* Center glow */}
         <div className="absolute left-1/2 top-[25%] h-72 w-[700px] -translate-x-1/2 rounded-full bg-violet-600/10 blur-[130px]" />
 
         {/* Stars */}
@@ -58,6 +59,7 @@ export default function HomePage() {
         <div className="absolute right-[17%] top-[18%] h-1 w-1 rounded-full bg-white/50" />
         <div className="absolute right-[29%] top-[10%] h-1 w-1 rounded-full bg-blue-200/50" />
         <div className="absolute left-[42%] top-[16%] h-1 w-1 rounded-full bg-white/40" />
+        <div className="absolute right-[44%] top-[8%] h-[3px] w-[3px] rounded-full bg-white/30" />
 
         {/* Summit glow */}
         <div className="absolute left-1/2 top-[32%] h-24 w-24 -translate-x-1/2 rounded-full bg-violet-300/10 blur-2xl" />
@@ -69,14 +71,14 @@ export default function HomePage() {
 
       <header className="relative z-30 flex items-center justify-between px-6 py-5 md:px-10 lg:px-16">
 
-        {/* MAARGA logo */}
+        {/* MAARGA Logo */}
         <Link
           to="/"
           className="group flex items-center gap-3"
         >
-
           <div className="relative flex h-10 w-10 items-center justify-center">
 
+            {/* Logo glow */}
             <div className="absolute inset-0 rounded-xl bg-violet-500/30 blur-md transition group-hover:bg-violet-500/50" />
 
             {/* Mountain + path logo */}
@@ -124,7 +126,6 @@ export default function HomePage() {
                 fill="white"
               />
             </svg>
-
           </div>
 
           <span className="text-sm font-semibold tracking-[0.35em]">
@@ -171,17 +172,16 @@ export default function HomePage() {
 
           {/* MAARGA */}
           <h1 className="text-6xl font-black tracking-[-0.07em] sm:text-7xl md:text-8xl lg:text-[96px]">
-
             <span className="bg-gradient-to-b from-white via-white to-slate-300 bg-clip-text text-transparent">
               MAARGA
             </span>
-
           </h1>
 
-          {/* Headline */}
+          {/* Main headline */}
           <h2 className="mt-2 text-2xl font-light leading-[1.2] tracking-tight sm:text-3xl md:text-4xl">
 
             Find your{' '}
+
             <span className="bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text font-medium text-transparent">
               direction.
             </span>
@@ -189,6 +189,7 @@ export default function HomePage() {
             <br />
 
             Build your{' '}
+
             <span className="bg-gradient-to-r from-blue-400 to-fuchsia-400 bg-clip-text font-medium text-transparent">
               path.
             </span>
@@ -205,13 +206,11 @@ export default function HomePage() {
             to="/register"
             className="group mt-5 inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-violet-500 via-purple-500 to-blue-400 px-7 py-3.5 text-sm font-semibold text-white shadow-[0_0_40px_rgba(124,58,237,0.4)] transition duration-300 hover:scale-[1.03] hover:shadow-[0_0_60px_rgba(124,58,237,0.6)]"
           >
-
             Start your journey
 
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15 transition-transform group-hover:translate-x-1">
               <ArrowRight size={15} />
             </span>
-
           </Link>
 
         </section>
@@ -255,7 +254,10 @@ export default function HomePage() {
             }}
           />
 
-          {/* Glowing journey path */}
+          {/* =================================================
+              GLOWING JOURNEY PATH
+          ================================================== */}
+
           <svg
             viewBox="0 0 1000 400"
             className="absolute inset-0 h-full w-full"
@@ -278,6 +280,7 @@ export default function HomePage() {
               </linearGradient>
 
               <filter id="pathGlow">
+
                 <feGaussianBlur
                   stdDeviation="7"
                   result="blur"
@@ -332,14 +335,14 @@ export default function HomePage() {
           </svg>
 
           {/* =================================================
-              GIRL SILHOUETTE
+              GIRL / TRAVELER
           ================================================== */}
 
           <div className="absolute bottom-[15%] left-1/2 z-20 -translate-x-1/2">
 
             <div className="relative h-28 w-14">
 
-              {/* Hair / head */}
+              {/* Head */}
               <div className="absolute left-1/2 top-0 h-7 w-7 -translate-x-1/2 rounded-full bg-[#05070d]" />
 
               {/* Body */}
@@ -358,10 +361,9 @@ export default function HomePage() {
               <div className="absolute left-[45px] top-8 h-24 w-[2px] rotate-[8deg] origin-top bg-slate-500/60" />
 
             </div>
-
           </div>
 
-          {/* Atmospheric foreground glow */}
+          {/* Foreground atmospheric glow */}
           <div className="absolute bottom-0 left-1/2 h-28 w-[650px] -translate-x-1/2 rounded-full bg-violet-500/10 blur-[90px]" />
 
         </section>
@@ -408,7 +410,7 @@ export default function HomePage() {
                     {item.title}
                   </p>
 
-                  {/* Meaning */}
+                  {/* Description */}
                   <p className="mt-1 text-[10px] text-slate-400">
                     {item.text}
                   </p>

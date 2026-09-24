@@ -50,7 +50,14 @@ function migrateAndValidate(data, duration) {
     settings: { ...fallback.settings, ...(data.settings || {}), duration },
     categories: Array.isArray(data.categories) ? data.categories : fallback.categories,
     days: resizeDays(data.days && typeof data.days === 'object' ? data.days : {}, duration),
-    tasks: Array.isArray(data.tasks) ? data.tasks : [],
+   tasks: Array.isArray(data.tasks)
+  ? data.tasks.map((task) => ({
+      ...task,
+      reminderTime: task.reminderTime || '',
+      reminderEnabled: task.reminderEnabled === true,
+      reminderTriggeredAt: task.reminderTriggeredAt || null,
+    }))
+  : [],
     studyLogs: Array.isArray(data.studyLogs) ? data.studyLogs : [],
     problems: Array.isArray(data.problems) ? data.problems : [],
     mistakes: Array.isArray(data.mistakes) ? data.mistakes : [],
@@ -64,7 +71,7 @@ export function exportData(data) {
   const a = document.createElement('a');
   const stamp = new Date().toISOString().slice(0, 10);
   a.href = url;
-  a.download = `elevora-backup-${stamp}.json`;
+  a.download = `plan-backup-${stamp}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
