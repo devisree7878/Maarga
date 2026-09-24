@@ -1,27 +1,53 @@
+
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, MailCheck } from 'lucide-react';
+import { CheckCircle2, Loader2, ArrowLeft } from 'lucide-react';
+
 import AuthShell from '../../components/auth/AuthShell';
 import { Input, FieldGroup } from '../../components/ui/Field';
 import Button from '../../components/ui/Button';
 import { useAuth } from '../../context/AuthContext';
 
 export default function ForgotPasswordPage() {
-  const { sendPasswordReset } = useAuth();
+  const { resetPassword } = useAuth();
+
   const [email, setEmail] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     setError('');
+    setSent(false);
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      setError('Please enter your email address.');
+      return;
+    }
+
     setLoading(true);
+
     try {
-      await sendPasswordReset(email.trim());
+      await resetPassword(cleanEmail);
       setSent(true);
     } catch (err) {
-      setError(err.message || 'Could not send the recovery email.');
+      console.error('Password reset error:', err);
+
+      const message = err?.message || '';
+
+      if (message.toLowerCase().includes('rate limit')) {
+        setError(
+          'Too many reset requests. Please wait a few minutes and try again.'
+        );
+      } else {
+        setError(
+          message || 'Could not send the reset email. Please try again.'
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -30,37 +56,95 @@ export default function ForgotPasswordPage() {
   return (
     <AuthShell
       title="Forgot your password?"
-      subtitle="We'll email you a link to reset it"
+      subtitle="Enter your email and we'll send you a password reset link."
       footer={
-        <Link to="/login" className="accent-text font-semibold">Back to Sign In</Link>
+        <Link
+          to="/login"
+          className="accent-text font-semibold inline-flex items-center gap-1.5"
+        >
+          <ArrowLeft size={14} />
+          Back to Sign In
+        </Link>
       }
     >
-      {sent ? (
-        <div className="flex flex-col items-center text-center gap-3 py-4">
-          <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center">
-            <MailCheck size={22} className="text-emerald-400" />
-          </div>
-          <p className="text-sm text-[rgb(var(--text))] font-medium">Check your inbox</p>
-          <p className="text-xs text-[rgb(var(--text-muted))]">
-            If an account exists for <span className="text-[rgb(var(--text))]">{email}</span>, a password reset link is on its way.
-          </p>
-        </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-3.5 py-2.5">
-              {error}
+      {sent && (
+        <div className="mb-5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm px-4 py-3">
+          <div className="flex items-start gap-2">
+            <CheckCircle2
+              size={17}
+              className="mt-0.5 shrink-0"
+            />
+
+            <div>
+              <p className="font-medium">
+                Reset link sent
+              </p>
+
+              <p className="mt-1 text-xs text-emerald-300/80">
+                Check your email and click the password reset
+                link to create a new password.
+              </p>
             </div>
-          )}
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-3.5 py-2.5">
+          {error}
+        </div>
+      )}
+
+      {!sent && (
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4"
+        >
           <FieldGroup label="Email">
-            <Input type="email" required placeholder="email@gmail.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+            <Input
+              type="email"
+              required
+              placeholder="email@gmail.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              disabled={loading}
+            />
           </FieldGroup>
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? <Loader2 size={15} className="animate-spin" /> : null}
-            Send Recovery Email
+
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={loading}
+          >
+            {loading && (
+              <Loader2
+                size={15}
+                className="animate-spin"
+              />
+            )}
+
+            {loading
+              ? 'Sending Reset Link...'
+              : 'Send Reset Link'}
           </Button>
         </form>
+      )}
+
+      {sent && (
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={() => {
+            setSent(false);
+            setError('');
+          }}
+        >
+          Send Again
+        </Button>
       )}
     </AuthShell>
   );
 }
+

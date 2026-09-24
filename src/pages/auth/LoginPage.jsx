@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Chrome, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 import AuthShell from '../../components/auth/AuthShell';
 import { Input, FieldGroup } from '../../components/ui/Field';
@@ -10,7 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 const ADMIN_EMAIL = 'devisreeadmin@gmail.com';
 
 export default function LoginPage() {
-  const { signInWithPassword, signInWithGoogle } = useAuth();
+  const { signInWithPassword } = useAuth();
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -20,7 +21,6 @@ export default function LoginPage() {
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
 
   const justRegistered = location.state?.justRegistered;
 
@@ -75,23 +75,6 @@ export default function LoginPage() {
       }
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleGoogle = async () => {
-    setError('');
-    setGoogleLoading(true);
-
-    try {
-      await signInWithGoogle();
-    } catch (err) {
-      console.error('Google login error:', err);
-
-      setError(
-        err?.message || 'Google sign-in failed. Please try again.'
-      );
-
-      setGoogleLoading(false);
     }
   };
 
@@ -160,7 +143,7 @@ export default function LoginPage() {
         <Button
           type="submit"
           className="w-full"
-          disabled={loading || googleLoading}
+          disabled={loading}
         >
           {loading && (
             <Loader2
@@ -173,37 +156,7 @@ export default function LoginPage() {
           {loading && 'Signing In...'}
         </Button>
       </form>
-
-      <div className="flex items-center gap-3 my-5">
-        <div className="h-px flex-1 bg-[rgb(var(--border))]" />
-
-        <span className="text-[11px] text-[rgb(var(--text-dim))] uppercase tracking-wide">
-          or
-        </span>
-
-        <div className="h-px flex-1 bg-[rgb(var(--border))]" />
-      </div>
-
-      <Button
-        type="button"
-        variant="secondary"
-        className="w-full"
-        onClick={handleGoogle}
-        disabled={loading || googleLoading}
-      >
-        {googleLoading ? (
-          <Loader2
-            size={15}
-            className="animate-spin"
-          />
-        ) : (
-          <Chrome size={15} />
-        )}
-
-        {googleLoading
-          ? 'Connecting to Google...'
-          : 'Continue with Google'}
-      </Button>
     </AuthShell>
   );
 }
+

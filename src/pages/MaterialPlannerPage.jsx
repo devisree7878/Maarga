@@ -24,23 +24,19 @@ import {
   Plus,
 } from "lucide-react";
 
-import {
-  extractMaterial,
-} from "../utils/materialExtractor";
-
+import { extractMaterial } from "../utils/materialExtractor";
+import { supabase } from "../supabaseClient";
 
 /* ======================================================
-   STORAGE
+   LOCAL STORAGE
+   Only used for remembering which material is open.
+   Actual materials/progress are stored in Supabase.
 ====================================================== */
-
-const MATERIAL_LIBRARY_KEY =
-  "maarga-material-library";
 
 const ACTIVE_MATERIAL_KEY =
   "maarga-active-material";
 
 const MAX_MATERIALS = 5;
-
 
 /* ======================================================
    HELPERS
@@ -54,13 +50,11 @@ function countWords(text = "") {
     .length;
 }
 
-
 function cleanText(text = "") {
   return String(text)
     .replace(/\s+/g, " ")
     .trim();
 }
-
 
 function createId() {
   if (
@@ -74,7 +68,6 @@ function createId() {
     .toString(36)
     .slice(2, 10)}`;
 }
-
 
 function createDayTitle(units) {
   if (!units?.length) {
@@ -91,8 +84,7 @@ function createDayTitle(units) {
       .filter(Boolean) || [];
 
   if (meaningful.length) {
-    const title =
-      meaningful[0];
+    const title = meaningful[0];
 
     if (title.length <= 80) {
       return title;
@@ -102,8 +94,7 @@ function createDayTitle(units) {
   }
 
   if (firstUnit.text) {
-    const title =
-      cleanText(firstUnit.text);
+    const title = cleanText(firstUnit.text);
 
     return title.length <= 80
       ? title
@@ -113,53 +104,43 @@ function createDayTitle(units) {
   return "Learning Day";
 }
 
-
 /* ======================================================
    ACTUAL SOURCE UNITS → TASKS
 ====================================================== */
 
 function unitsToTasks(units) {
-  return units.flatMap(
-    (unit) => {
-      if (
-        unit.cells &&
-        unit.cells.length
-      ) {
-        return unit.cells
-          .filter(
-            (cell) =>
-              cleanText(
-                cell.value
-              )
-          )
-          .map((cell) => ({
-            id: `${unit.id}-${cell.label}`,
-            label: cell.label,
-            text: cleanText(
-              cell.value
-            ),
-            sourceUnit: unit.id,
-          }));
-      }
-
-      if (unit.text) {
-        return [
-          {
-            id: unit.id,
-            label: "Content",
-            text: cleanText(
-              unit.text
-            ),
-            sourceUnit: unit.id,
-          },
-        ];
-      }
-
-      return [];
+  return units.flatMap((unit) => {
+    if (
+      unit.cells &&
+      unit.cells.length
+    ) {
+      return unit.cells
+        .filter(
+          (cell) =>
+            cleanText(cell.value)
+        )
+        .map((cell) => ({
+          id: `${unit.id}-${cell.label}`,
+          label: cell.label,
+          text: cleanText(cell.value),
+          sourceUnit: unit.id,
+        }));
     }
-  );
-}
 
+    if (unit.text) {
+      return [
+        {
+          id: unit.id,
+          label: "Content",
+          text: cleanText(unit.text),
+          sourceUnit: unit.id,
+        },
+      ];
+    }
+
+    return [];
+  });
+}
 
 /* ======================================================
    DISTRIBUTE SOURCE CONTENT
@@ -181,7 +162,6 @@ function distributeUnits(
     );
   }
 
-
   /* Exact match:
      30 source rows → 30 days
   */
@@ -197,7 +177,6 @@ function distributeUnits(
       })
     );
   }
-
 
   /* More source units than days */
 
@@ -239,8 +218,7 @@ function distributeUnits(
       i < units.length;
       i++
     ) {
-      const unit =
-        units[i];
+      const unit = units[i];
 
       const unitWeight =
         Math.max(
@@ -282,7 +260,6 @@ function distributeUnits(
     return days;
   }
 
-
   /* More days than source units */
 
   return [
@@ -310,61 +287,167 @@ function distributeUnits(
   ];
 }
 
-
 /* ======================================================
-   LIBRARY STORAGE
+   SUPABASE MATERIAL STORAGE
 ====================================================== */
 
-function readLibrary() {
-  try {
-    const saved =
-      localStorage.getItem(
-        MATERIAL_LIBRARY_KEY
-      );
+async function getCurrentUser() {
+  const {
+    data,
+    error,
+  } = await supabase.auth.getUser();
 
-    if (!saved) {
-      return [];
-    }
-
-    const parsed =
-      JSON.parse(saved);
-
-    return Array.isArray(parsed)
-      ? parsed
-      : [];
-  } catch (error) {
-    console.error(
-      "Could not read MAARGA material library:",
-      error
-    );
-
-    return [];
+  if (error) {
+    throw error;
   }
+
+  if (!data?.user) {
+    throw new Error(
+      "You must be logged in to use the Material Planner."
+    );
+  }
+
+  return data.user;
 }
 
+/* ======================================================
+   DATABASE ROW → FRONTEND MATERIAL
+====================================================== */
 
-function saveLibrary(
-  materials
-) {
-  try {
-    localStorage.setItem(
-      MATERIAL_LIBRARY_KEY,
-      JSON.stringify(
-        materials
+function dbRowToMaterial(row) {
+  const settings =
+    row.settings || {};
+
+  const progress =
+    row.progress || {};
+
+  return {
+    id: row.id,
+
+    name: row.name,
+
+    type: row.type,
+
+    material: {
+      type: row.type,
+      name: row.name,
+
+      pageCount:
+        row.page_count || 1,
+
+      wordCount:
+        row.word_count || 0,
+
+      hasTables:
+        Boolean(row.has_tables),
+
+      units:
+        Array.isArray(row.units)
+          ? row.units
+          : [],
+    },
+
+    learningDays:
+      Number(
+        settings.learningDays
+      ) || 30,
+
+    hoursPerDay:
+      Number(
+        settings.hoursPerDay
+      ) || 0.5,
+
+    completedDays:
+      Array.isArray(
+        progress.completedDays
       )
-    );
+        ? progress.completedDays
+        : [],
 
-    return true;
-  } catch (error) {
-    console.error(
-      "Could not save MAARGA material library:",
-      error
-    );
+    selectedDay:
+      Number(
+        progress.selectedDay
+      ) || 1,
 
-    return false;
-  }
+    expandedDays:
+      Array.isArray(
+        progress.expandedDays
+      )
+        ? progress.expandedDays
+        : [1],
+
+    createdAt:
+      row.created_at,
+
+    updatedAt:
+      row.updated_at,
+  };
 }
 
+/* ======================================================
+   FRONTEND MATERIAL → DATABASE ROW
+====================================================== */
+
+function materialToDbRow(
+  material,
+  userId
+) {
+  return {
+    id: material.id,
+
+    user_id: userId,
+
+    name:
+      material.name,
+
+    type:
+      material.type,
+
+    page_count:
+      material.material?.pageCount ||
+      1,
+
+    word_count:
+      material.material?.wordCount ||
+      0,
+
+    has_tables:
+      Boolean(
+        material.material?.hasTables
+      ),
+
+    units:
+      material.material?.units ||
+      [],
+
+    settings: {
+      learningDays:
+        material.learningDays ||
+        30,
+
+      hoursPerDay:
+        material.hoursPerDay ||
+        0.5,
+    },
+
+    progress: {
+      completedDays:
+        material.completedDays ||
+        [],
+
+      selectedDay:
+        material.selectedDay ||
+        1,
+
+      expandedDays:
+        material.expandedDays ||
+        [1],
+    },
+
+    updated_at:
+      new Date().toISOString(),
+  };
+}
 
 /* ======================================================
    MAIN COMPONENT
@@ -396,36 +479,97 @@ export default function MaterialPlannerPage() {
     setDeleteTarget,
   ] = useState(null);
 
-
   /* ====================================================
-     RESTORE LIBRARY + ACTIVE MATERIAL
+     LOAD MATERIALS FROM SUPABASE
   ==================================================== */
 
   useEffect(() => {
-    const saved =
-      readLibrary();
+    let mounted = true;
 
-    setMaterials(saved);
+    async function loadMaterials() {
+      try {
+        setLoading(true);
+        setError("");
 
-    const savedActiveId =
-      localStorage.getItem(
-        ACTIVE_MATERIAL_KEY
-      );
+        const user =
+          await getCurrentUser();
 
-    if (
-      savedActiveId &&
-      saved.some(
-        (item) =>
-          item.id ===
-          savedActiveId
-      )
-    ) {
-      setActiveMaterialId(
-        savedActiveId
-      );
+        const {
+          data,
+          error: fetchError,
+        } = await supabase
+          .from("learning_materials")
+          .select("*")
+          .eq(
+            "user_id",
+            user.id
+          )
+          .order(
+            "created_at",
+            {
+              ascending: true,
+            }
+          );
+
+        if (fetchError) {
+          throw fetchError;
+        }
+
+        if (!mounted) {
+          return;
+        }
+
+        const loadedMaterials =
+          (data || []).map(
+            dbRowToMaterial
+          );
+
+        setMaterials(
+          loadedMaterials
+        );
+
+        const savedActiveId =
+          localStorage.getItem(
+            ACTIVE_MATERIAL_KEY
+          );
+
+        if (
+          savedActiveId &&
+          loadedMaterials.some(
+            (item) =>
+              item.id ===
+              savedActiveId
+          )
+        ) {
+          setActiveMaterialId(
+            savedActiveId
+          );
+        }
+      } catch (err) {
+        console.error(
+          "Could not load materials:",
+          err
+        );
+
+        if (mounted) {
+          setError(
+            err?.message ||
+              "Could not load your learning materials."
+          );
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
     }
-  }, []);
 
+    loadMaterials();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   /* ====================================================
      SAVE ACTIVE MATERIAL ID
@@ -446,7 +590,6 @@ export default function MaterialPlannerPage() {
     activeMaterialId,
   ]);
 
-
   /* ====================================================
      ACTIVE MATERIAL
   ==================================================== */
@@ -457,7 +600,6 @@ export default function MaterialPlannerPage() {
         item.id ===
         activeMaterialId
     ) || null;
-
 
   /* ====================================================
      UPLOAD MATERIAL
@@ -486,10 +628,11 @@ export default function MaterialPlannerPage() {
     setLoading(true);
 
     try {
+      const user =
+        await getCurrentUser();
+
       const extracted =
-        await extractMaterial(
-          file
-        );
+        await extractMaterial(file);
 
       if (
         !extracted.units ||
@@ -541,46 +684,54 @@ export default function MaterialPlannerPage() {
           now,
       };
 
-      const updatedMaterials = [
-        ...materials,
-        newMaterial,
-      ];
-
-      const saved =
-        saveLibrary(
-          updatedMaterials
+      const dbRow =
+        materialToDbRow(
+          newMaterial,
+          user.id
         );
 
-      if (!saved) {
-        throw new Error(
-          "The material could not be saved in this browser. The file may be too large."
-        );
+      const {
+        data,
+        error: insertError,
+      } = await supabase
+        .from(
+          "learning_materials"
+        )
+        .insert(dbRow)
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
       }
 
-      setMaterials(
-        updatedMaterials
-      );
+      const savedMaterial =
+        dbRowToMaterial(data);
 
-      /* Automatically open new file */
+      setMaterials(
+        (previous) => [
+          ...previous,
+          savedMaterial,
+        ]
+      );
 
       setActiveMaterialId(
-        newMaterial.id
+        savedMaterial.id
       );
-
     } catch (err) {
       console.error(
+        "Material upload failed:",
         err
       );
 
       setError(
         err?.message ||
-          "Unable to extract this material."
+          "Unable to save this material."
       );
     } finally {
       setLoading(false);
     }
   }
-
 
   function handleInputChange(
     event
@@ -595,43 +746,95 @@ export default function MaterialPlannerPage() {
     event.target.value = "";
   }
 
-
   /* ====================================================
      UPDATE ACTIVE MATERIAL
+     Saves settings/progress to Supabase.
   ==================================================== */
 
-  function updateActiveMaterial(
+  async function updateActiveMaterial(
     updates
   ) {
     if (!activeMaterialId) {
       return;
     }
 
-    setMaterials(
-      (previous) => {
-        const updated =
-          previous.map(
-            (item) =>
-              item.id ===
-              activeMaterialId
-                ? {
-                    ...item,
-                    ...updates,
-                    updatedAt:
-                      new Date().toISOString(),
-                  }
-                : item
-          );
+    const currentMaterial =
+      materials.find(
+        (item) =>
+          item.id ===
+          activeMaterialId
+      );
 
-        saveLibrary(
-          updated
+    if (!currentMaterial) {
+      return;
+    }
+
+    const updatedMaterial = {
+      ...currentMaterial,
+      ...updates,
+      updatedAt:
+        new Date().toISOString(),
+    };
+
+    /* Update UI immediately */
+
+    setMaterials(
+      (previous) =>
+        previous.map(
+          (item) =>
+            item.id ===
+            activeMaterialId
+              ? updatedMaterial
+              : item
+        )
+    );
+
+    try {
+      const user =
+        await getCurrentUser();
+
+      const dbRow =
+        materialToDbRow(
+          updatedMaterial,
+          user.id
         );
 
-        return updated;
-      }
-    );
-  }
+      /* id and user_id should not
+         be changed during update */
 
+      delete dbRow.user_id;
+      delete dbRow.id;
+
+      const {
+        error: updateError,
+      } = await supabase
+        .from(
+          "learning_materials"
+        )
+        .update(dbRow)
+        .eq(
+          "id",
+          activeMaterialId
+        )
+        .eq(
+          "user_id",
+          user.id
+        );
+
+      if (updateError) {
+        throw updateError;
+      }
+    } catch (err) {
+      console.error(
+        "Could not save material progress:",
+        err
+      );
+
+      setError(
+        "Your change could not be saved to the server."
+      );
+    }
+  }
 
   /* ====================================================
      OPEN MATERIAL
@@ -646,7 +849,6 @@ export default function MaterialPlannerPage() {
       materialId
     );
   }
-
 
   /* ====================================================
      BACK TO MATERIAL LIBRARY
@@ -666,9 +868,8 @@ export default function MaterialPlannerPage() {
     setDeleteTarget(null);
   }
 
-
   /* ====================================================
-     DELETE
+     DELETE REQUEST
   ==================================================== */
 
   function requestDelete(
@@ -679,8 +880,11 @@ export default function MaterialPlannerPage() {
     );
   }
 
+  /* ====================================================
+     DELETE MATERIAL FROM SUPABASE
+  ==================================================== */
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteTarget) {
       return;
     }
@@ -688,43 +892,71 @@ export default function MaterialPlannerPage() {
     const idToDelete =
       deleteTarget.id;
 
-    const updated =
-      materials.filter(
-        (item) =>
-          item.id !==
+    try {
+      const user =
+        await getCurrentUser();
+
+      const {
+        error: deleteError,
+      } = await supabase
+        .from(
+          "learning_materials"
+        )
+        .delete()
+        .eq(
+          "id",
           idToDelete
+        )
+        .eq(
+          "user_id",
+          user.id
+        );
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      const updated =
+        materials.filter(
+          (item) =>
+            item.id !==
+            idToDelete
+        );
+
+      setMaterials(
+        updated
       );
 
-    saveLibrary(
-      updated
-    );
+      if (
+        activeMaterialId ===
+        idToDelete
+      ) {
+        setActiveMaterialId(
+          null
+        );
 
-    setMaterials(
-      updated
-    );
+        localStorage.removeItem(
+          ACTIVE_MATERIAL_KEY
+        );
+      }
 
-    /* If deleted file is currently open */
-
-    if (
-      activeMaterialId ===
-      idToDelete
-    ) {
-      setActiveMaterialId(
+      setDeleteTarget(
         null
       );
 
-      localStorage.removeItem(
-        ACTIVE_MATERIAL_KEY
+      setError("");
+    } catch (err) {
+      console.error(
+        "Could not delete material:",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "Could not delete this material."
       );
     }
-
-    setDeleteTarget(
-      null
-    );
-
-    setError("");
   }
-
 
   /* ====================================================
      LIBRARY VIEW
@@ -734,30 +966,13 @@ export default function MaterialPlannerPage() {
     return (
       <>
         <MaterialLibrary
-          materials={
-            materials
-          }
-          loading={
-            loading
-          }
-          error={
-            error
-          }
-          onUpload={
-            handleInputChange
-          }
-          onOpen={
-            openMaterial
-          }
-          onDelete={
-            requestDelete
-          }
+          materials={materials}
+          loading={loading}
+          error={error}
+          onUpload={handleInputChange}
+          onOpen={openMaterial}
+          onDelete={requestDelete}
         />
-
-        {/* IMPORTANT:
-            Delete modal is also rendered
-            while inside Library.
-        */}
 
         {deleteTarget && (
           <DeleteModal
@@ -777,7 +992,6 @@ export default function MaterialPlannerPage() {
       </>
     );
   }
-
 
   /* ====================================================
      PLANNER VIEW
@@ -814,7 +1028,6 @@ export default function MaterialPlannerPage() {
   );
 }
 
-
 /* ======================================================
    MATERIAL LIBRARY
 ====================================================== */
@@ -829,15 +1042,12 @@ function MaterialLibrary({
 }) {
   return (
     <div className="min-h-screen bg-[#07070c] text-white">
-
       <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
 
         {/* HEADER */}
 
         <div className="mb-10">
-
           <div className="mb-2 flex items-center gap-2">
-
             <Sparkles
               size={18}
               className="text-violet-400"
@@ -846,14 +1056,10 @@ function MaterialLibrary({
             <span className="text-sm font-semibold tracking-[0.25em] text-violet-300">
               MAARGA
             </span>
-
           </div>
 
-
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-
             <div>
-
               <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
                 Material Library
               </h1>
@@ -863,33 +1069,24 @@ function MaterialLibrary({
                 and continue every learning path exactly
                 where you left off.
               </p>
-
             </div>
 
-
             <div className="rounded-2xl border border-white/10 bg-white/[0.035] px-5 py-3">
-
               <p className="text-xs uppercase tracking-[0.15em] text-zinc-600">
                 Materials
               </p>
 
               <p className="mt-1 text-lg font-bold">
-
                 {materials.length}
 
                 <span className="text-zinc-600">
                   {" "}
                   / {MAX_MATERIALS}
                 </span>
-
               </p>
-
             </div>
-
           </div>
-
         </div>
-
 
         {/* ERROR */}
 
@@ -899,14 +1096,11 @@ function MaterialLibrary({
           </div>
         )}
 
-
         {/* MATERIALS */}
 
         {materials.length > 0 && (
           <section className="mb-8">
-
             <div className="mb-4 flex items-center gap-2">
-
               <FolderOpen
                 size={18}
                 className="text-violet-300"
@@ -915,15 +1109,11 @@ function MaterialLibrary({
               <h2 className="text-lg font-semibold">
                 Your materials
               </h2>
-
             </div>
 
-
             <div className="grid gap-3">
-
               {materials.map(
                 (item) => {
-
                   const completed =
                     item.completedDays
                       ?.length || 0;
@@ -974,20 +1164,15 @@ function MaterialLibrary({
                   );
                 }
               )}
-
             </div>
-
           </section>
         )}
-
 
         {/* UPLOAD */}
 
         {materials.length <
         MAX_MATERIALS ? (
-
           <label className="group block cursor-pointer">
-
             <input
               type="file"
               accept=".pdf,.docx,.txt,.md"
@@ -1000,34 +1185,23 @@ function MaterialLibrary({
               }
             />
 
-
             <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.025] p-10 text-center transition group-hover:border-violet-400/50 group-hover:bg-violet-500/[0.04]">
 
               <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-300">
-
                 {loading ? (
-
                   <div className="h-6 w-6 animate-spin rounded-full border-2 border-violet-300 border-t-transparent" />
-
                 ) : (
-
                   <Plus
                     size={28}
                   />
-
                 )}
-
               </div>
 
-
               <h2 className="text-xl font-semibold">
-
                 {loading
                   ? "Reading your material..."
                   : "Add new material"}
-
               </h2>
-
 
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-zinc-500">
                 Upload another PDF or document.
@@ -1035,87 +1209,62 @@ function MaterialLibrary({
                 remain untouched.
               </p>
 
-
               <div className="mt-6 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold transition group-hover:bg-violet-500">
-
                 <Upload
                   size={17}
                 />
-
                 Upload material
-
               </div>
 
-
               <p className="mt-4 text-xs text-zinc-600">
-
                 {MAX_MATERIALS -
                   materials.length}{" "}
-
                 slot
                 {MAX_MATERIALS -
                   materials.length ===
                 1
                   ? ""
                   : "s"}{" "}
-
                 remaining
-
               </p>
-
             </div>
-
           </label>
-
         ) : (
-
           <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-8 text-center">
-
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-white/5 text-zinc-500">
-
               <FolderOpen
                 size={22}
               />
-
             </div>
-
 
             <h2 className="font-semibold">
               Material limit reached
             </h2>
-
 
             <p className="mx-auto mt-2 max-w-md text-sm text-zinc-500">
               You can keep up to 5 learning
               materials. Delete an existing
               material to upload another.
             </p>
-
           </div>
-
         )}
-
 
         {/* EMPTY */}
 
         {materials.length ===
           0 && (
           <div className="mt-8 text-center">
-
             <p className="text-xs text-zinc-600">
-              Your uploaded materials and
-              learning progress are saved in
-              this browser.
+              Your materials and learning
+              progress are securely saved
+              to your account.
             </p>
-
           </div>
         )}
-
       </div>
     </div>
   );
 }
-
 
 /* ======================================================
    MATERIAL CARD
@@ -1133,18 +1282,11 @@ function MaterialCard({
 
       <div className="flex items-center gap-4">
 
-        {/* FILE ICON */}
-
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300">
-
           <FileText
             size={22}
           />
-
         </div>
-
-
-        {/* INFO */}
 
         <button
           type="button"
@@ -1153,14 +1295,11 @@ function MaterialCard({
           }
           className="min-w-0 flex-1 text-left"
         >
-
           <h3 className="truncate font-semibold text-white transition group-hover:text-violet-200">
             {material.name}
           </h3>
 
-
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600">
-
             <span>
               {material.type?.toUpperCase()}
             </span>
@@ -1177,36 +1316,23 @@ function MaterialCard({
                 30}{" "}
               days
             </span>
-
           </div>
 
-
-          {/* PROGRESS */}
-
           <div className="mt-4 flex items-center gap-3">
-
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
-
               <div
                 className="h-full rounded-full bg-gradient-to-r from-violet-500 to-blue-500 transition-all"
                 style={{
                   width: `${progress}%`,
                 }}
               />
-
             </div>
-
 
             <span className="text-xs font-medium text-zinc-500">
               {progress}%
             </span>
-
           </div>
-
         </button>
-
-
-        {/* OPEN */}
 
         <button
           type="button"
@@ -1215,17 +1341,12 @@ function MaterialCard({
           }
           className="hidden shrink-0 items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold transition hover:bg-violet-500 sm:flex"
         >
-
           Open
 
           <ArrowRight
             size={16}
           />
-
         </button>
-
-
-        {/* DELETE */}
 
         <button
           type="button"
@@ -1235,19 +1356,14 @@ function MaterialCard({
           title="Delete material"
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 text-zinc-500 transition hover:border-red-400/20 hover:bg-red-400/5 hover:text-red-300"
         >
-
           <Trash2
             size={17}
           />
-
         </button>
-
       </div>
-
     </div>
   );
 }
-
 
 /* ======================================================
    PLANNER
@@ -1288,14 +1404,12 @@ function MaterialPlanner({
     materialRecord.selectedDay ||
     1;
 
-
   /* ====================================================
      PLAN
   ==================================================== */
 
   const plan =
     useMemo(() => {
-
       if (
         !material?.units?.length
       ) {
@@ -1310,7 +1424,6 @@ function MaterialPlanner({
 
       return distributed.map(
         (day) => {
-
           const tasks =
             unitsToTasks(
               day.units
@@ -1353,12 +1466,10 @@ function MaterialPlanner({
           };
         }
       );
-
     }, [
       material,
       learningDays,
     ]);
-
 
   /* ====================================================
      SETTINGS
@@ -1382,7 +1493,6 @@ function MaterialPlanner({
     });
   }
 
-
   function changeHours(
     hours
   ) {
@@ -1391,7 +1501,6 @@ function MaterialPlanner({
         hours,
     });
   }
-
 
   /* ====================================================
      COMPLETION
@@ -1404,7 +1513,6 @@ function MaterialPlanner({
       dayNumber
     );
   }
-
 
   function isDayUnlocked(
     dayNumber
@@ -1419,7 +1527,6 @@ function MaterialPlanner({
       dayNumber - 1
     );
   }
-
 
   function completeDay(
     dayNumber
@@ -1463,7 +1570,6 @@ function MaterialPlanner({
     });
   }
 
-
   /* ====================================================
      RESET
   ==================================================== */
@@ -1480,7 +1586,6 @@ function MaterialPlanner({
         [1],
     });
   }
-
 
   /* ====================================================
      TOGGLE
@@ -1520,7 +1625,6 @@ function MaterialPlanner({
     });
   }
 
-
   /* ====================================================
      STATS
   ==================================================== */
@@ -1552,7 +1656,6 @@ function MaterialPlanner({
         )
       : 0;
 
-
   /* ====================================================
      UI
   ==================================================== */
@@ -1573,16 +1676,13 @@ function MaterialPlanner({
             }
             className="group flex w-fit items-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-4 py-2.5 text-sm font-medium text-zinc-300 transition hover:border-violet-400/30 hover:bg-violet-500/10 hover:text-white"
           >
-
             <ArrowLeft
               size={17}
               className="transition-transform group-hover:-translate-x-1"
             />
 
             Back to Materials
-
           </button>
-
 
           <button
             type="button"
@@ -1591,24 +1691,19 @@ function MaterialPlanner({
             }
             className="flex w-fit items-center gap-2 rounded-xl border border-red-400/10 bg-red-400/[0.03] px-4 py-2.5 text-sm text-red-300 transition hover:bg-red-400/[0.08]"
           >
-
             <Trash2
               size={16}
             />
 
             Delete material
-
           </button>
-
         </div>
-
 
         {/* HEADER */}
 
         <div className="mb-8">
 
           <div className="mb-2 flex items-center gap-2">
-
             <Sparkles
               size={18}
               className="text-violet-400"
@@ -1617,22 +1712,17 @@ function MaterialPlanner({
             <span className="text-sm font-semibold tracking-[0.25em] text-violet-300">
               MAARGA
             </span>
-
           </div>
-
 
           <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
             Material Planner
           </h1>
 
-
           <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
             Continue your learning path exactly
             where you left off.
           </p>
-
         </div>
-
 
         {/* FILE CARD */}
 
@@ -1641,13 +1731,10 @@ function MaterialPlanner({
           <div className="flex items-start gap-4">
 
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300">
-
               <FileText
                 size={22}
               />
-
             </div>
-
 
             <div className="min-w-0 flex-1">
 
@@ -1655,9 +1742,7 @@ function MaterialPlanner({
                 {fileName}
               </h2>
 
-
               <p className="mt-1 text-xs text-zinc-500">
-
                 {material.type?.toUpperCase()}
 
                 {" · "}
@@ -1675,15 +1760,11 @@ function MaterialPlanner({
                 {material.units?.length ||
                   0}{" "}
                 content units
-
               </p>
 
             </div>
-
           </div>
-
         </div>
-
 
         {/* STATS */}
 
@@ -1701,7 +1782,6 @@ function MaterialPlanner({
             }
           />
 
-
           <StatCard
             icon={
               <FileText
@@ -1713,7 +1793,6 @@ function MaterialPlanner({
               totalWords.toLocaleString()
             }
           />
-
 
           <StatCard
             icon={
@@ -1728,9 +1807,7 @@ function MaterialPlanner({
               )
             }
           />
-
         </div>
-
 
         {/* PLAN SETTINGS */}
 
@@ -1746,9 +1823,7 @@ function MaterialPlanner({
               Your settings are saved separately
               for this material.
             </p>
-
           </div>
-
 
           {/* DAYS */}
 
@@ -1763,15 +1838,12 @@ function MaterialPlanner({
               <span className="text-sm font-semibold text-violet-300">
                 {learningDays} days
               </span>
-
             </div>
-
 
             <div className="flex flex-wrap gap-2">
 
               {[7, 14, 21, 30, 45, 60, 90].map(
                 (days) => (
-
                   <button
                     key={
                       days
@@ -1791,14 +1863,11 @@ function MaterialPlanner({
                   >
                     {days} days
                   </button>
-
                 )
               )}
 
             </div>
-
           </div>
-
 
           {/* HOURS */}
 
@@ -1811,22 +1880,17 @@ function MaterialPlanner({
               </label>
 
               <span className="text-sm font-semibold text-violet-300">
-
                 {hoursPerDay ===
                 0.5
                   ? "30 min"
                   : `${hoursPerDay} hr`}
-
               </span>
-
             </div>
-
 
             <div className="flex flex-wrap gap-2">
 
               {[0.5, 1, 1.5, 2, 3, 4, 5, 6].map(
                 (hours) => (
-
                   <button
                     key={
                       hours
@@ -1849,16 +1913,12 @@ function MaterialPlanner({
                       ? "30 min"
                       : `${hours} hr`}
                   </button>
-
                 )
               )}
 
             </div>
-
           </div>
-
         </section>
-
 
         {/* PROGRESS */}
 
@@ -1880,7 +1940,6 @@ function MaterialPlanner({
 
             </div>
 
-
             <div className="text-left md:text-right">
 
               <div className="text-3xl font-bold">
@@ -1890,11 +1949,8 @@ function MaterialPlanner({
               <p className="text-xs text-zinc-500">
                 Keep moving forward
               </p>
-
             </div>
-
           </div>
-
 
           <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
 
@@ -1906,9 +1962,7 @@ function MaterialPlanner({
             />
 
           </div>
-
         </section>
-
 
         {/* YOUR PATH */}
 
@@ -1930,13 +1984,11 @@ function MaterialPlanner({
 
               </div>
 
-
               <h2 className="text-2xl font-bold">
                 {learningDays}-Day Learning Plan
               </h2>
 
             </div>
-
 
             <div className="hidden items-center gap-2 text-sm text-zinc-500 sm:flex">
 
@@ -1952,9 +2004,7 @@ function MaterialPlanner({
               {" / day"}
 
             </div>
-
           </div>
-
 
           {/* DAY CARDS */}
 
@@ -1962,7 +2012,6 @@ function MaterialPlanner({
 
             {plan.map(
               (day) => {
-
                 const completed =
                   isDayCompleted(
                     day.dayNumber
@@ -2015,41 +2064,34 @@ function MaterialPlanner({
             )}
 
           </div>
-
         </section>
-
 
         {/* COMPLETION */}
 
         {plan.length > 0 &&
           completedCount ===
             plan.length && (
+            <div className="mt-8 rounded-3xl border border-emerald-400/20 bg-emerald-400/5 p-8 text-center">
 
-          <div className="mt-8 rounded-3xl border border-emerald-400/20 bg-emerald-400/5 p-8 text-center">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-400/10 text-emerald-300">
 
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-400/10 text-emerald-300">
+                <Check
+                  size={26}
+                />
 
-              <Check
-                size={26}
-              />
+              </div>
+
+              <h2 className="text-2xl font-bold">
+                Material completed
+              </h2>
+
+              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-zinc-400">
+                You completed every learning day
+                created from this material.
+              </p>
 
             </div>
-
-
-            <h2 className="text-2xl font-bold">
-              Material completed
-            </h2>
-
-
-            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-zinc-400">
-              You completed every learning day
-              created from this material.
-            </p>
-
-          </div>
-
-        )}
-
+          )}
 
         {/* FOOTER */}
 
@@ -2079,7 +2121,6 @@ function MaterialPlanner({
 
       </div>
 
-
       {/* DELETE MODAL */}
 
       {deleteTarget && (
@@ -2099,7 +2140,6 @@ function MaterialPlanner({
     </div>
   );
 }
-
 
 /* ======================================================
    STAT CARD
@@ -2128,7 +2168,6 @@ function StatCard({
     </div>
   );
 }
-
 
 /* ======================================================
    DAY CARD
@@ -2184,25 +2223,18 @@ function DayCard({
         >
 
           {completed ? (
-
             <Check
               size={19}
             />
-
           ) : unlocked ? (
-
             day.dayNumber
-
           ) : (
-
             <Lock
               size={17}
             />
-
           )}
 
         </div>
-
 
         <div className="min-w-0 flex-1">
 
@@ -2213,13 +2245,11 @@ function DayCard({
               {day.dayNumber}
             </span>
 
-
             {completed && (
               <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
                 Completed
               </span>
             )}
-
 
             {!unlocked && (
               <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
@@ -2228,7 +2258,6 @@ function DayCard({
             )}
 
           </div>
-
 
           <h3
             className={`mt-1 truncate text-base font-semibold ${
@@ -2244,13 +2273,11 @@ function DayCard({
 
         </div>
 
-
         <div className="flex shrink-0 items-center gap-3">
 
           <span className="hidden text-xs text-zinc-600 sm:block">
             {day.words} words
           </span>
-
 
           {unlocked &&
             (expanded ? (
@@ -2269,175 +2296,151 @@ function DayCard({
 
       </button>
 
-
       {/* CONTENT */}
 
       {expanded &&
         unlocked && (
+          <div className="border-t border-white/5 px-5 pb-5">
 
-        <div className="border-t border-white/5 px-5 pb-5">
-
-          {day.units.length ===
-          0 ? (
-
-            <div className="py-6 text-sm text-zinc-600">
-              All extracted material has already
-              been distributed across the earlier
-              learning days.
-            </div>
-
-          ) : (
-
-            <>
-
-              <div className="pt-5">
-
-                <div className="mb-3 flex items-center gap-2">
-
-                  <BookOpen
-                    size={15}
-                    className="text-violet-300"
-                  />
-
-                  <span className="text-xs font-semibold uppercase tracking-[0.15em] text-zinc-500">
-                    Tasks
-                  </span>
-
-                </div>
-
-
-                <div className="space-y-2">
-
-                  {day.tasks.map(
-                    (task) => (
-
-                    <div
-                      key={
-                        task.id
-                      }
-                      className="rounded-xl border border-white/5 bg-black/20 px-4 py-3"
-                    >
-
-                      <p className="text-sm leading-6 text-zinc-200">
-                        {task.text}
-                      </p>
-
-
-                      {task.label &&
-                        task.label !==
-                          "Content" && (
-
-                        <p className="mt-1 text-[11px] uppercase tracking-wider text-zinc-600">
-                          {
-                            task.label
-                          }
-                        </p>
-
-                      )}
-
-                    </div>
-
-                  ))}
-
-                </div>
-
+            {day.units.length ===
+            0 ? (
+              <div className="py-6 text-sm text-zinc-600">
+                All extracted material has already
+                been distributed across the earlier
+                learning days.
               </div>
+            ) : (
+              <>
+                <div className="pt-5">
 
+                  <div className="mb-3 flex items-center gap-2">
 
-              <div className="mt-5 rounded-xl bg-white/[0.025] px-4 py-3">
+                    <BookOpen
+                      size={15}
+                      className="text-violet-300"
+                    />
 
-                <div className="flex items-center justify-between gap-3">
-
-                  <div>
-
-                    <p className="text-xs font-medium text-zinc-500">
-                      Source content
-                    </p>
-
-                    <p className="mt-1 text-xs text-zinc-600">
-
-                      {day.units.length}{" "}
-                      actual material unit
-                      {day.units.length ===
-                      1
-                        ? ""
-                        : "s"}
-
-                      {" · "}
-
-                      {day.words}{" "}
-                      words
-
-                    </p>
+                    <span className="text-xs font-semibold uppercase tracking-[0.15em] text-zinc-500">
+                      Tasks
+                    </span>
 
                   </div>
 
+                  <div className="space-y-2">
 
-                  <span className="text-xs font-medium text-violet-300">
+                    {day.tasks.map(
+                      (task) => (
+                        <div
+                          key={
+                            task.id
+                          }
+                          className="rounded-xl border border-white/5 bg-black/20 px-4 py-3"
+                        >
 
-                    {day.weight.toFixed(
-                      1
-                    )}{" "}
-                    weight
+                          <p className="text-sm leading-6 text-zinc-200">
+                            {task.text}
+                          </p>
 
-                  </span>
+                          {task.label &&
+                            task.label !==
+                              "Content" && (
+                              <p className="mt-1 text-[11px] uppercase tracking-wider text-zinc-600">
+                                {
+                                  task.label
+                                }
+                              </p>
+                            )}
+
+                        </div>
+                      )
+                    )}
+
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-xl bg-white/[0.025] px-4 py-3">
+
+                  <div className="flex items-center justify-between gap-3">
+
+                    <div>
+
+                      <p className="text-xs font-medium text-zinc-500">
+                        Source content
+                      </p>
+
+                      <p className="mt-1 text-xs text-zinc-600">
+
+                        {day.units.length}{" "}
+                        actual material unit
+                        {day.units.length ===
+                        1
+                          ? ""
+                          : "s"}
+
+                        {" · "}
+
+                        {day.words}{" "}
+                        words
+
+                      </p>
+
+                    </div>
+
+                    <span className="text-xs font-medium text-violet-300">
+
+                      {day.weight.toFixed(
+                        1
+                      )}{" "}
+                      weight
+
+                    </span>
+
+                  </div>
 
                 </div>
 
-              </div>
+                {!completed ? (
+                  <button
+                    type="button"
+                    onClick={
+                      onComplete
+                    }
+                    className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-violet-500"
+                  >
 
+                    <Check
+                      size={17}
+                    />
 
-              {!completed ? (
+                    Complete Day{" "}
+                    {
+                      day.dayNumber
+                    }
 
-                <button
-                  type="button"
-                  onClick={
-                    onComplete
-                  }
-                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-violet-500"
-                >
+                    <ArrowRight
+                      size={17}
+                    />
 
-                  <Check
-                    size={17}
-                  />
+                  </button>
+                ) : (
+                  <div className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-emerald-400/15 bg-emerald-400/5 px-5 py-3 text-sm font-medium text-emerald-300">
 
-                  Complete Day{" "}
-                  {
-                    day.dayNumber
-                  }
+                    <Check
+                      size={17}
+                    />
 
-                  <ArrowRight
-                    size={17}
-                  />
+                    Day completed
 
-                </button>
+                  </div>
+                )}
+              </>
+            )}
 
-              ) : (
-
-                <div className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-emerald-400/15 bg-emerald-400/5 px-5 py-3 text-sm font-medium text-emerald-300">
-
-                  <Check
-                    size={17}
-                  />
-
-                  Day completed
-
-                </div>
-
-              )}
-
-            </>
-
-          )}
-
-        </div>
-
-      )}
-
+          </div>
+        )}
     </div>
   );
 }
-
 
 /* ======================================================
    DELETE MODAL
@@ -2466,16 +2469,13 @@ function DeleteModal({
 
         </div>
 
-
         <h2 className="text-xl font-bold">
           Delete material?
         </h2>
 
-
         <p className="mt-2 text-sm leading-6 text-zinc-400">
           This will permanently remove:
         </p>
-
 
         <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
 
@@ -2485,13 +2485,11 @@ function DeleteModal({
 
         </div>
 
-
         <p className="mt-4 text-xs leading-5 text-zinc-600">
           Its extracted content, learning plan,
-          and progress will also be removed from
-          this browser.
+          and progress will also be permanently
+          removed.
         </p>
-
 
         <div className="mt-6 flex gap-3">
 
@@ -2504,7 +2502,6 @@ function DeleteModal({
           >
             Cancel
           </button>
-
 
           <button
             type="button"
@@ -2519,7 +2516,6 @@ function DeleteModal({
         </div>
 
       </div>
-
     </div>
   );
 }

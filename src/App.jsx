@@ -1,11 +1,22 @@
+
 import React, { useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import {
+  HashRouter,
+  Routes,
+  Route,
+  Navigate,
+} from 'react-router-dom';
 import { Loader2, RotateCcw } from 'lucide-react';
+
 import MaterialPlannerPage from './pages/MaterialPlannerPage';
-import { AuthProvider, useAuth } from './context/AuthContext';
+
+import {
+  AuthProvider,
+  useAuth,
+} from './context/AuthContext';
+
 import { AppProvider } from './context/AppContext';
 import { UIProvider } from './context/UIContext';
-
 
 import Sidebar from './components/layout/Sidebar';
 import BottomNav from './components/layout/BottomNav';
@@ -13,10 +24,12 @@ import GlobalSearch from './components/layout/GlobalSearch';
 import DayPanel from './components/day/DayPanel';
 
 import HomePage from './pages/HomePage';
+
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
+
 import OnboardingPage from './pages/OnboardingPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 
@@ -66,7 +79,6 @@ function ProfileErrorScreen() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[rgb(var(--bg))] px-4">
-
       <div className="max-w-sm text-center">
 
         <p className="text-sm font-semibold text-[rgb(var(--text))] mb-1">
@@ -81,6 +93,7 @@ function ProfileErrorScreen() {
         <div className="flex items-center justify-center gap-2">
 
           <button
+            type="button"
             onClick={refreshProfile}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl accent-bg text-white text-sm font-semibold"
           >
@@ -89,6 +102,7 @@ function ProfileErrorScreen() {
           </button>
 
           <button
+            type="button"
             onClick={signOut}
             className="px-3.5 py-2 rounded-xl bg-[rgb(var(--surface-2))] text-[rgb(var(--text-muted))] text-sm font-medium"
           >
@@ -96,9 +110,7 @@ function ProfileErrorScreen() {
           </button>
 
         </div>
-
       </div>
-
     </div>
   );
 }
@@ -111,41 +123,33 @@ function ProfileErrorScreen() {
 function AuthenticatedShell() {
   const { user, profile } = useAuth();
 
-
-
-
   /* -------------------------------------------------------
      DAILY STUDY REMINDER
-
-     This uses the existing reminder system.
-
-     It does NOT use the ELEVORA name in the notification.
   ------------------------------------------------------- */
 
+  useEffect(() => {
+    if (!profile) return;
 
-useEffect(() => {
-  if (!profile) return;
+    startStudyReminder({
+      startTime: profile.daily_start_time,
+      goal: profile.goal,
+      enabled: profile.reminders_enabled !== false,
+    });
 
-  startStudyReminder({
-    startTime: profile.daily_start_time,
-    goal: profile.goal,
-    enabled: profile.reminders_enabled !== false,
-  });
+    return () => {
+      stopStudyReminder();
+    };
+  }, [
+    profile?.daily_start_time,
+    profile?.goal,
+    profile?.reminders_enabled,
+  ]);
 
-  return () => {
-    stopStudyReminder();
-  };
-}, [
-  profile?.daily_start_time,
-  profile?.goal,
-  profile?.reminders_enabled,
-]);
   return (
     <AppProvider
       userId={user.id}
       initialDuration={profile.schedule_days}
     >
-
       <UIProvider>
 
         <div className="flex min-h-screen bg-[rgb(var(--bg))]">
@@ -153,10 +157,8 @@ useEffect(() => {
           {/* LEFT SIDEBAR */}
           <Sidebar />
 
-
           {/* MAIN CONTENT */}
           <main className="flex-1 min-w-0">
-
             <Routes>
 
               <Route
@@ -168,10 +170,12 @@ useEffect(() => {
                 path="/days"
                 element={<DaysPage />}
               />
-<Route
-  path="/material-planner"
-  element={<MaterialPlannerPage />}
-/>
+
+              <Route
+                path="/material-planner"
+                element={<MaterialPlannerPage />}
+              />
+
               <Route
                 path="/problems"
                 element={<ProblemsPage />}
@@ -219,13 +223,10 @@ useEffect(() => {
               />
 
             </Routes>
-
           </main>
-
 
           {/* MOBILE NAVIGATION */}
           <BottomNav />
-
 
           {/* GLOBAL COMPONENTS */}
           <GlobalSearch />
@@ -234,7 +235,6 @@ useEffect(() => {
         </div>
 
       </UIProvider>
-
     </AppProvider>
   );
 }
@@ -242,15 +242,6 @@ useEffect(() => {
 
 /* =========================================================
    MAIN AREA
-
-   Decides what the user should see:
-
-   1. Loading auth
-   2. Logged out
-   3. Loading profile
-   4. Profile error
-   5. Onboarding
-   6. Authenticated application
 ========================================================= */
 
 function MainArea() {
@@ -262,35 +253,29 @@ function MainArea() {
     authError,
   } = useAuth();
 
-
   /* Authentication still loading */
   if (authLoading) {
     return <FullScreenLoader />;
   }
-
 
   /* User is logged out */
   if (!user) {
     return <HomePage />;
   }
 
-
   /* Profile still loading */
   if (profileLoading) {
     return <FullScreenLoader />;
   }
 
-
   /* Profile failed */
   if (!profile) {
-
     if (authError) {
       return <ProfileErrorScreen />;
     }
 
     return <FullScreenLoader />;
   }
-
 
   /* User hasn't completed onboarding */
   if (!profile.onboarding_completed) {
@@ -301,7 +286,6 @@ function MainArea() {
       />
     );
   }
-
 
   /* Normal authenticated application */
   return <AuthenticatedShell />;
@@ -320,14 +304,12 @@ function RequireAdmin({ children }) {
     isAdmin,
   } = useAuth();
 
-
   if (
     authLoading ||
     (user && profileLoading)
   ) {
     return <FullScreenLoader />;
   }
-
 
   if (!user || !isAdmin) {
     return (
@@ -337,7 +319,6 @@ function RequireAdmin({ children }) {
       />
     );
   }
-
 
   return children;
 }
@@ -353,11 +334,9 @@ function PublicOnly({ children }) {
     user,
   } = useAuth();
 
-
   if (authLoading) {
     return <FullScreenLoader />;
   }
-
 
   if (user) {
     return (
@@ -367,7 +346,6 @@ function PublicOnly({ children }) {
       />
     );
   }
-
 
   return children;
 }
@@ -385,14 +363,12 @@ function OnboardingRoute() {
     profileLoading,
   } = useAuth();
 
-
   if (
     authLoading ||
     (user && profileLoading)
   ) {
     return <FullScreenLoader />;
   }
-
 
   /* Not logged in */
   if (!user) {
@@ -404,7 +380,6 @@ function OnboardingRoute() {
     );
   }
 
-
   /* Already completed onboarding */
   if (profile?.onboarding_completed) {
     return (
@@ -414,7 +389,6 @@ function OnboardingRoute() {
       />
     );
   }
-
 
   return <OnboardingPage />;
 }
@@ -428,9 +402,9 @@ function AppRoutes() {
   return (
     <Routes>
 
-      {/* -------------------------------------------------
+      {/* =================================================
           AUTHENTICATION
-      ------------------------------------------------- */}
+      ================================================= */}
 
       <Route
         path="/login"
@@ -459,33 +433,29 @@ function AppRoutes() {
         }
       />
 
-
-      {/* -------------------------------------------------
+      {/* =================================================
           PASSWORD RESET
 
-          Can be accessed both while signed out and
-          during the Supabase recovery session.
-      ------------------------------------------------- */}
+          Accessible during the Supabase recovery session.
+      ================================================= */}
 
       <Route
         path="/reset-password"
         element={<ResetPasswordPage />}
       />
 
-
-      {/* -------------------------------------------------
+      {/* =================================================
           ONBOARDING
-      ------------------------------------------------- */}
+      ================================================= */}
 
       <Route
         path="/onboarding"
         element={<OnboardingRoute />}
       />
 
-
-      {/* -------------------------------------------------
+      {/* =================================================
           ADMIN
-      ------------------------------------------------- */}
+      ================================================= */}
 
       <Route
         path="/admin"
@@ -496,10 +466,9 @@ function AppRoutes() {
         }
       />
 
-
-      {/* -------------------------------------------------
+      {/* =================================================
           EVERYTHING ELSE
-      ------------------------------------------------- */}
+      ================================================= */}
 
       <Route
         path="/*"
@@ -518,13 +487,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-
       <HashRouter>
-
         <AppRoutes />
-
       </HashRouter>
-
     </AuthProvider>
   );
 }
